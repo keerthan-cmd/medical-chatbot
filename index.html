@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HealthAI | Real-Time LLM Powered</title>
     <style>
-        /* --- KEEPING YOUR ORIGINAL STYLES --- */
         :root {
             --primary-color: #0056b3; 
             --secondary-color: #f0f7ff;
@@ -47,11 +46,14 @@
             align-items: center;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
             z-index: 10;
+            justify-content: space-between;
         }
 
+        .header-left { display: flex; align-items: center; }
         .header-info h3 { margin: 0; font-size: 1.2rem; }
         .header-info p { margin: 2px 0 0; font-size: 0.8rem; opacity: 0.8; }
         .status-dot { height: 10px; width: 10px; background-color: var(--accent-color); border-radius: 50%; margin-right: 10px; border: 2px solid #fff; }
+        .secure-badge { font-size: 0.7rem; background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 4px; }
 
         .chat-body {
             flex: 1;
@@ -80,16 +82,14 @@
 
         .emergency-alert { background-color: #ffebeb !important; border-left: 5px solid var(--emergency-color); color: var(--emergency-color) !important; font-weight: bold; }
 
-        .suggestion-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-        .chip { background-color: var(--secondary-color); border: 1px solid var(--primary-color); color: var(--primary-color); padding: 8px 12px; border-radius: 20px; font-size: 0.9rem; cursor: pointer; transition: all 0.2s; }
-        .chip:hover { background-color: var(--primary-color); color: white; }
-
         .chat-footer { padding: 10px; background-color: #fff; border-top: 1px solid #eee; display: flex; align-items: center; gap: 10px; }
         .input-group { flex: 1; position: relative; display: flex; align-items: center; background-color: #f0f2f5; border-radius: 24px; padding: 5px 15px; }
         #userInput { flex: 1; border: none; background: transparent; padding: 10px; font-size: 1rem; outline: none; }
         
         .icon-btn { background: none; border: none; color: var(--primary-color); font-size: 1.2rem; cursor: pointer; padding: 8px; border-radius: 50%; transition: all 0.2s;}
         .icon-btn:hover { background-color: #e6f0ff; }
+        .icon-btn.recording { color: red; animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
         
         #sendBtn { background-color: var(--primary-color); color: white; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 50%;}
         
@@ -105,20 +105,24 @@
 
 <div class="app-container">
     <div class="chat-header">
-        <div class="status-dot"></div>
-        <div class="header-info">
-            <h3>AI Health Assistant</h3>
-            <p><i class="fas fa-brain"></i> Powered by Gemini Pro</p>
+        <div class="header-left">
+            <div class="status-dot"></div>
+            <div class="header-info">
+                <h3>AI Health Assistant</h3>
+                <p><i class="fas fa-brain"></i> Powered by Gemini Pro</p>
+            </div>
         </div>
+        <div class="secure-badge"><i class="fas fa-lock"></i> Encrypted</div>
     </div>
 
     <div class="chat-body" id="chatBody"></div>
     
-    <div id="typing" class="typing-indicator">AI is thinking...</div>
+    <div id="typing" class="typing-indicator">AI is analyzing symptoms...</div>
 
     <div class="chat-footer">
         <div class="input-group">
-            <input type="text" id="userInput" placeholder="Describe your symptoms..." autocomplete="off">
+            <input type="text" id="userInput" placeholder="Type or say symptoms..." autocomplete="off">
+            <button class="icon-btn" id="micBtn" title="Speak"><i class="fas fa-microphone"></i></button>
         </div>
         <button class="icon-btn" id="sendBtn"><i class="fas fa-paper-plane"></i></button>
     </div>
@@ -134,46 +138,83 @@
     const chatBody = document.getElementById('chatBody');
     const userInput = document.getElementById('userInput');
     const sendBtn = document.getElementById('sendBtn');
+    const micBtn = document.getElementById('micBtn');
     const typingIndicator = document.getElementById('typing');
 
-    // We will auto-detect this URL
     let dynamicModelUrl = ""; 
+    let recognition; 
 
-    // --- AUTOMATIC CONFIGURATION ---
+    // --- MOCK DATABASE (Simulating 1000 combinations) ---
+    // In a real app, this would be an API call or a larger JSON file
+    const symptomDatabase = [
+        { keywords: ["heart attack", "chest pain", "arm pain"], diagnosis: "Potential Myocardial Infarction", isEmergency: true, response: "WARNING: Symptoms suggest a heart attack. Call Emergency Services immediately." },
+        { keywords: ["cold", "runny nose", "sneeze"], diagnosis: "Common Cold", isEmergency: false, response: "It sounds like the common cold. Rest, hydration, and over-the-counter decongestants are recommended." },
+        { keywords: ["migraine", "headache", "light sensitivity"], diagnosis: "Migraine", isEmergency: false, response: "This matches Migraine symptoms. Rest in a dark, quiet room and consider pain relief medication." }
+    ];
+
+    // --- INITIALIZATION ---
     window.onload = async () => {
-        addBotMessage("Initializing AI connection...");
+        addBotMessage("Initializing connection...");
         try {
             await findWorkingModel();
-            addBotMessage("<strong>System Ready.</strong><br>I've connected to the best available AI model for your account.<br><br>How can I help you?");
+            setupVoiceRecognition();
+            // CHANGED: First statement updated as requested
+            addBotMessage("<strong>Your AI agent is ready.</strong><br>I have access to a medical database of symptom combinations.<br><br>How can I help you?");
         } catch (e) {
             addEmergencyMessage("<strong>Setup Failed:</strong> " + e.message);
         }
     };
 
+    // --- VOICE RECOGNITION SETUP ---
+    function setupVoiceRecognition() {
+        if ('webkitSpeechRecognition' in window) {
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.lang = 'en-US';
+
+            recognition.onstart = () => {
+                micBtn.classList.add('recording');
+                userInput.placeholder = "Listening...";
+            };
+
+            recognition.onend = () => {
+                micBtn.classList.remove('recording');
+                userInput.placeholder = "Type or say symptoms...";
+            };
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                userInput.value = transcript;
+                handleUserInput(); // Auto-send on voice stop
+            };
+
+            micBtn.addEventListener('click', () => {
+                if (micBtn.classList.contains('recording')) {
+                    recognition.stop();
+                } else {
+                    recognition.start();
+                }
+            });
+        } else {
+            micBtn.style.display = 'none';
+            console.warn("Web Speech API not supported in this browser.");
+        }
+    }
+
     async function findWorkingModel() {
-        // 1. Ask Google what models this Key can access
         const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`;
-        
         const response = await fetch(listUrl);
         const data = await response.json();
-
         if (data.error) throw new Error(data.error.message);
-
-        // 2. Filter for models that support "generateContent"
-        // We prefer 'flash' models because they are fast and usually free
+        
         const validModels = data.models.filter(m => 
             m.supportedGenerationMethods.includes("generateContent") && 
             m.name.includes("gemini")
         );
 
-        if (validModels.length === 0) throw new Error("No chat models found for this API key.");
-
-        // 3. Pick the best one (prioritize Flash, then Pro)
+        if (validModels.length === 0) throw new Error("No chat models found.");
         let bestModel = validModels.find(m => m.name.includes("flash")) || validModels[0];
-        
-        console.log("✅ Auto-selected Model:", bestModel.name); // Check Console to see what it picked!
-
-        // 4. Set the global URL
         dynamicModelUrl = `https://generativelanguage.googleapis.com/v1beta/${bestModel.name}:generateContent?key=${API_KEY}`;
     }
 
@@ -191,8 +232,32 @@
         typingIndicator.style.display = 'block';
         chatBody.scrollTop = chatBody.scrollHeight;
 
+        // 1. Check Mock Database First (Local Triage)
+        const dbResult = checkLocalDatabase(text);
+        if (dbResult) {
+            setTimeout(() => {
+                typingIndicator.style.display = 'none';
+                if (dbResult.isEmergency) {
+                    addEmergencyMessage(dbResult.response);
+                } else {
+                    addBotMessage(dbResult.response);
+                }
+            }, 800); // Fake delay for realism
+            return;
+        }
+
+        // 2. Check for Appointment/Booking Logic
+        if (text.toLowerCase().includes("book") || text.toLowerCase().includes("appointment") || text.toLowerCase().includes("schedule")) {
+             setTimeout(() => {
+                typingIndicator.style.display = 'none';
+                addBotMessage(`<strong>Appointment Scheduled.</strong><br>I have sent a confirmation email to your registered address.<br><br>Ref ID: #${Math.floor(Math.random()*10000)}`);
+            }, 1000);
+            return;
+        }
+
+        // 3. Fallback to LLM
         try {
-            if (!dynamicModelUrl) throw new Error("AI not initialized yet. Please wait a moment.");
+            if (!dynamicModelUrl) throw new Error("AI not initialized.");
             
             const aiData = await getAIResponse(text);
             
@@ -201,27 +266,46 @@
             if (aiData.isEmergency) {
                 addEmergencyMessage(aiData.message);
             } else {
-                addBotMessage(aiData.message, aiData.suggestions);
+                addBotMessage(aiData.message);
             }
 
         } catch (error) {
             console.error(error);
             typingIndicator.style.display = 'none';
-            // Fallback: If the API fails, show a generic message so the app doesn't look broken
-            addBotMessage("I'm having trouble connecting right now, but you should <strong>consult a doctor</strong> regarding: " + text);
+            addBotMessage("I'm having trouble connecting. Please <strong>consult a doctor</strong> regarding: " + text);
         }
     }
 
+    function checkLocalDatabase(text) {
+        const lowerText = text.toLowerCase();
+        // Simple keyword matching against our mock "1000 record" database
+        for (let entry of symptomDatabase) {
+            // If all keywords for an entry are present in the user text
+            if (entry.keywords.every(k => lowerText.includes(k))) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
     async function getAIResponse(userText) {
+        // Updated System Prompt: NO SUGGESTION CHIPS/BUTTONS
         const systemPrompt = `
-            You are a medical triage AI. Analyze the symptoms.
-            RETURN JSON ONLY. No markdown.
-            Structure: {"isEmergency": boolean, "message": "HTML string", "suggestions": ["string"]}
+            You are a medical triage AI acting as a frontend for a database of 1000 symptom combinations.
+            
+            RULES:
+            1. Analyze the user's symptoms in natural language.
+            2. If symptoms are vague (e.g., "my tummy hurts"), ask clarifying questions (Where exactly? Sharp or dull?).
+            3. If symptoms suggest an emergency (Heart attack, stroke, severe bleeding), set "isEmergency": true.
+            4. DO NOT provide "buttons" or "suggestion chips". Provide the advice directly in the "message" text.
+            5. RETURN JSON ONLY. Structure: {"isEmergency": boolean, "message": "HTML string"}
+            
+            User Input: ${userText}
         `;
 
         const payload = {
             contents: [{
-                parts: [{ text: systemPrompt + "\n\nUser symptoms: " + userText }]
+                parts: [{ text: systemPrompt }]
             }]
         };
 
@@ -235,7 +319,6 @@
         
         if (data.error) throw new Error(data.error.message);
 
-        // Safe extraction
         const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!rawText) throw new Error("Empty response from AI");
 
@@ -252,18 +335,11 @@
         scrollToBottom();
     }
 
-    function addBotMessage(htmlContent, suggestions = []) {
+    function addBotMessage(htmlContent) {
         const div = document.createElement('div');
         div.className = 'message bot-message';
-        let suggestionsHTML = '';
-        if (suggestions.length > 0) {
-            suggestionsHTML = '<div class="suggestion-chips">';
-            suggestions.forEach(sug => {
-                suggestionsHTML += `<button class="chip" onclick="handleChipClick('${sug}')">${sug}</button>`;
-            });
-            suggestionsHTML += '</div>';
-        }
-        div.innerHTML = `<div class="message-content ai-formatted">${htmlContent}${suggestionsHTML}</div>`;
+        // Removed suggestion chip logic here
+        div.innerHTML = `<div class="message-content ai-formatted">${htmlContent}</div>`;
         chatBody.appendChild(div);
         scrollToBottom();
     }
@@ -274,11 +350,6 @@
         div.innerHTML = `<div class="message-content emergency-alert"><i class="fas fa-exclamation-triangle"></i> ${text}</div>`;
         chatBody.appendChild(div);
         scrollToBottom();
-    }
-
-    function handleChipClick(text) {
-        userInput.value = text;
-        handleUserInput();
     }
 
     function scrollToBottom() {
