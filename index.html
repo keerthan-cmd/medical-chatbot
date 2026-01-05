@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HealthAI | Real-Time LLM Powered</title>
+    <style>
+        /* --- KEEPING YOUR ORIGINAL STYLES --- */
+        :root {
+            --primary-color: #0056b3; 
+            --secondary-color: #f0f7ff;
+            --accent-color: #00c853; 
+            --emergency-color: #d32f2f; 
+            --text-dark: #333;
+            --text-light: #fff;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 450px;
+            height: 90vh;
+            background-color: #fff;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .chat-header {
+            background: linear-gradient(135deg, var(--primary-color), #007bff);
+            color: var(--text-light);
+            padding: 15px 20px;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            z-index: 10;
+        }
+
+        .header-info h3 { margin: 0; font-size: 1.2rem; }
+        .header-info p { margin: 2px 0 0; font-size: 0.8rem; opacity: 0.8; }
+        .status-dot { height: 10px; width: 10px; background-color: var(--accent-color); border-radius: 50%; margin-right: 10px; border: 2px solid #fff; }
+
+        .chat-body {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background-color: var(--secondary-color);
+        }
+
+        .message { margin-bottom: 15px; max-width: 85%; clear: both; animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .bot-message { float: left; }
+        .user-message { float: right; }
+
+        .message-content {
+            padding: 12px 16px;
+            border-radius: 18px;
+            position: relative;
+            font-size: 0.95rem;
+            line-height: 1.4;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+
+        .bot-message .message-content { background-color: #fff; color: var(--text-dark); border-bottom-left-radius: 5px; }
+        .user-message .message-content { background-color: var(--primary-color); color: var(--text-light); border-bottom-right-radius: 5px; }
+
+        .emergency-alert { background-color: #ffebeb !important; border-left: 5px solid var(--emergency-color); color: var(--emergency-color) !important; font-weight: bold; }
+
+        .suggestion-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+        .chip { background-color: var(--secondary-color); border: 1px solid var(--primary-color); color: var(--primary-color); padding: 8px 12px; border-radius: 20px; font-size: 0.9rem; cursor: pointer; transition: all 0.2s; }
+        .chip:hover { background-color: var(--primary-color); color: white; }
+
+        .chat-footer { padding: 10px; background-color: #fff; border-top: 1px solid #eee; display: flex; align-items: center; gap: 10px; }
+        .input-group { flex: 1; position: relative; display: flex; align-items: center; background-color: #f0f2f5; border-radius: 24px; padding: 5px 15px; }
+        #userInput { flex: 1; border: none; background: transparent; padding: 10px; font-size: 1rem; outline: none; }
+        
+        .icon-btn { background: none; border: none; color: var(--primary-color); font-size: 1.2rem; cursor: pointer; padding: 8px; border-radius: 50%; transition: all 0.2s;}
+        .icon-btn:hover { background-color: #e6f0ff; }
+        
+        #sendBtn { background-color: var(--primary-color); color: white; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 50%;}
+        
+        .typing-indicator { color: #888; font-size: 0.8rem; margin-bottom: 10px; margin-left: 10px; display: none; clear: both;}
+        
+        /* Markdown/HTML Formatting from AI */
+        .ai-formatted ul { margin: 5px 0 10px 20px; padding: 0; }
+        .ai-formatted strong { color: var(--primary-color); }
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+
+<div class="app-container">
+    <div class="chat-header">
+        <div class="status-dot"></div>
+        <div class="header-info">
+            <h3>AI Health Assistant</h3>
+            <p><i class="fas fa-brain"></i> Powered by Gemini Pro</p>
+        </div>
+    </div>
+
+    <div class="chat-body" id="chatBody"></div>
+    
+    <div id="typing" class="typing-indicator">AI is thinking...</div>
+
+    <div class="chat-footer">
+        <div class="input-group">
+            <input type="text" id="userInput" placeholder="Describe your symptoms..." autocomplete="off">
+        </div>
+        <button class="icon-btn" id="sendBtn"><i class="fas fa-paper-plane"></i></button>
+    </div>
+</div>
+
+<script>
+    // ==========================================
+    // ⚠️ PASTE YOUR API KEY HERE
+    // ==========================================
+    const API_KEY = "AIzaSyD6t7_a3XuOc_sM6ZgkZp5QeKT-07cPHZs"; 
+    // ==========================================
+
+    const chatBody = document.getElementById('chatBody');
+    const userInput = document.getElementById('userInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const typingIndicator = document.getElementById('typing');
+
+    // We will auto-detect this URL
+    let dynamicModelUrl = ""; 
+
+    // --- AUTOMATIC CONFIGURATION ---
+    window.onload = async () => {
+        addBotMessage("Initializing AI connection...");
+        try {
+            await findWorkingModel();
+            addBotMessage("<strong>System Ready.</strong><br>I've connected to the best available AI model for your account.<br><br>How can I help you?");
+        } catch (e) {
+            addEmergencyMessage("<strong>Setup Failed:</strong> " + e.message);
+        }
+    };
+
+    async function findWorkingModel() {
+        // 1. Ask Google what models this Key can access
+        const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`;
+        
+        const response = await fetch(listUrl);
+        const data = await response.json();
+
+        if (data.error) throw new Error(data.error.message);
+
+        // 2. Filter for models that support "generateContent"
+        // We prefer 'flash' models because they are fast and usually free
+        const validModels = data.models.filter(m => 
+            m.supportedGenerationMethods.includes("generateContent") && 
+            m.name.includes("gemini")
+        );
+
+        if (validModels.length === 0) throw new Error("No chat models found for this API key.");
+
+        // 3. Pick the best one (prioritize Flash, then Pro)
+        let bestModel = validModels.find(m => m.name.includes("flash")) || validModels[0];
+        
+        console.log("✅ Auto-selected Model:", bestModel.name); // Check Console to see what it picked!
+
+        // 4. Set the global URL
+        dynamicModelUrl = `https://generativelanguage.googleapis.com/v1beta/${bestModel.name}:generateContent?key=${API_KEY}`;
+    }
+
+    // --- MAIN CHAT LOGIC ---
+    sendBtn.addEventListener('click', handleUserInput);
+    userInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') handleUserInput(); });
+
+    async function handleUserInput() {
+        const text = userInput.value.trim();
+        if (!text) return;
+
+        addUserMessage(text);
+        userInput.value = '';
+        
+        typingIndicator.style.display = 'block';
+        chatBody.scrollTop = chatBody.scrollHeight;
+
+        try {
+            if (!dynamicModelUrl) throw new Error("AI not initialized yet. Please wait a moment.");
+            
+            const aiData = await getAIResponse(text);
+            
+            typingIndicator.style.display = 'none';
+
+            if (aiData.isEmergency) {
+                addEmergencyMessage(aiData.message);
+            } else {
+                addBotMessage(aiData.message, aiData.suggestions);
+            }
+
+        } catch (error) {
+            console.error(error);
+            typingIndicator.style.display = 'none';
+            // Fallback: If the API fails, show a generic message so the app doesn't look broken
+            addBotMessage("I'm having trouble connecting right now, but you should <strong>consult a doctor</strong> regarding: " + text);
+        }
+    }
+
+    async function getAIResponse(userText) {
+        const systemPrompt = `
+            You are a medical triage AI. Analyze the symptoms.
+            RETURN JSON ONLY. No markdown.
+            Structure: {"isEmergency": boolean, "message": "HTML string", "suggestions": ["string"]}
+        `;
+
+        const payload = {
+            contents: [{
+                parts: [{ text: systemPrompt + "\n\nUser symptoms: " + userText }]
+            }]
+        };
+
+        const response = await fetch(dynamicModelUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+        
+        if (data.error) throw new Error(data.error.message);
+
+        // Safe extraction
+        const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!rawText) throw new Error("Empty response from AI");
+
+        const jsonText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(jsonText);
+    }
+
+    // --- UI HELPERS ---
+    function addUserMessage(text) {
+        const div = document.createElement('div');
+        div.className = 'message user-message';
+        div.innerHTML = `<div class="message-content">${text}</div>`;
+        chatBody.appendChild(div);
+        scrollToBottom();
+    }
+
+    function addBotMessage(htmlContent, suggestions = []) {
+        const div = document.createElement('div');
+        div.className = 'message bot-message';
+        let suggestionsHTML = '';
+        if (suggestions.length > 0) {
+            suggestionsHTML = '<div class="suggestion-chips">';
+            suggestions.forEach(sug => {
+                suggestionsHTML += `<button class="chip" onclick="handleChipClick('${sug}')">${sug}</button>`;
+            });
+            suggestionsHTML += '</div>';
+        }
+        div.innerHTML = `<div class="message-content ai-formatted">${htmlContent}${suggestionsHTML}</div>`;
+        chatBody.appendChild(div);
+        scrollToBottom();
+    }
+
+    function addEmergencyMessage(text) {
+        const div = document.createElement('div');
+        div.className = 'message bot-message';
+        div.innerHTML = `<div class="message-content emergency-alert"><i class="fas fa-exclamation-triangle"></i> ${text}</div>`;
+        chatBody.appendChild(div);
+        scrollToBottom();
+    }
+
+    function handleChipClick(text) {
+        userInput.value = text;
+        handleUserInput();
+    }
+
+    function scrollToBottom() {
+        chatBody.scrollTop = chatBody.scrollHeight;
+    }
+</script>
+</body>
+</html>
